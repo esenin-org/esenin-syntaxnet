@@ -113,7 +113,7 @@ class SyntaxQuery(Resource):
             return {'result': 'fail', "reason": repr(e)}, 400
 
 
-api.add_resource(SyntaxQuery, '/api/syntaxnet')
+api.add_resource(SyntaxQuery, '/api')
 
 if __name__ == "__main__":
     app.debug = True
