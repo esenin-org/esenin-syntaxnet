@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 from flask import Flask
 from flask_restful import Resource, Api, reqparse
-from flask_cors import CORS
 
 import os
 import ipywidgets as widgets
@@ -91,9 +90,7 @@ def parse_string_from_dragnn(sentence):
     return return_dict
 
 app = Flask(__name__)
-CORS(app)
 api = Api(app)
-
 
 class SyntaxQuery(Resource):
     def __init__(self):
@@ -113,7 +110,7 @@ class SyntaxQuery(Resource):
             return {'result': 'fail', "reason": repr(e)}, 400
 
 
-api.add_resource(SyntaxQuery, '/api')
+api.add_resource(SyntaxQuery, '/api/pos')
 
 if __name__ == "__main__":
     app.debug = True
