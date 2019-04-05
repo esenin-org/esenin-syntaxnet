@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-from flask import Flask
-from flask_restful import Resource, Api, reqparse
+from flask import Flask, request, jsonify
+from werkzeug.exceptions import HTTPException
+import logging
 
 import os
 import ipywidgets as widgets
@@ -68,50 +69,66 @@ def annotate_text(text):
     return sentence_pb2.Sentence.FromString(annotations[0])
 
 def parse_string_from_dragnn(sentence):
+    def parse_tag(tag):
+        result_dict = {}
+
+        def remove_prefix(prefix, s):
+            if s.startswith(prefix):
+                return s[len(prefix):]
+            else:
+                raise ValueError(s + " doesn't start with " + prefix)
+
+        def remove_suffix(suffix, s):
+            if s.endswith(suffix):
+                return s[:-len(suffix)]
+            else:
+                raise ValueError(s + " doesn't end with " + suffix)
+
+        tag = remove_prefix("attribute { ", tag)
+        tag = remove_suffix(" } ", tag)
+
+        for part in tag.split(" } attribute { "):
+            part = remove_prefix('name: "', part)
+            k, part = part.split('"', 1)
+            part = remove_prefix(' value: "', part)
+            v, part = part.split('"', 1)
+            result_dict[k] = v
+        
+        return result_dict
+
     result = annotate_text(sentence)
 
-    return_dict = {}
-    return_dict['input'] = result.text
-    output = []
-    for stuff in result.token:
-        tmpdict = {}
-        tmpdict['word'] = stuff.word
-        tmpdict['label'] = stuff.label
-        tmpdict['break_level'] = stuff.break_level
-        tmpdict['category'] = stuff.category
-        tmpdict['head'] = stuff.head
-        tmpdict['tag'] = str(stuff.tag)
+    result_dict = {}
+    words = []
+    for t in result.token:
+        word_dict = {}
+        word_dict['word'] = t.word
+        word_dict['connection_label'] = t.label
+        word_dict['connection_index'] = t.head
+
+        tag_dict = parse_tag(t.tag)
+        word_dict['pos'] = tag_dict['fPOS']
         
-        # tmp fix for getting back the pos_tag
-        #tmpdict['pos_tag'] = tmpdict['fpos'].split('++')[1]
-        
-        output.append(tmpdict)
-    return_dict['output'] = output
-    return return_dict
+        words.append(word_dict)
+    result_dict['words'] = words
+    return jsonify(result_dict)
 
 app = Flask(__name__)
-api = Api(app)
+app.logger.setLevel(logging.INFO)
 
-class SyntaxQuery(Resource):
-    def __init__(self):
-        self.reqparse = reqparse.RequestParser()
-        self.reqparse.add_argument('string', 
-                                   required=True, 
-                                   type=unicode, 
-                                   help='string to parse', 
-                                   location='json')
-        super(SyntaxQuery, self).__init__()
+@app.errorhandler(Exception)
+def handle_error(e):
+    code = 500
+    if isinstance(e, HTTPException):
+        code = e.code
+    else:
+        app.logger.exception(e)
+    return jsonify(error=repr(e)), code
 
-    def post(self):
-        args = self.reqparse.parse_args()
-        try:
-            return parse_string_from_dragnn(args['string'])
-        except Exception as e:
-            return {'result': 'fail', "reason": repr(e)}, 400
-
-
-api.add_resource(SyntaxQuery, '/api/pos')
+@app.route('/api/pos', methods=['POST'])
+def pos():
+    text = request.json['text']
+    return parse_string_from_dragnn(text)
 
 if __name__ == "__main__":
-    app.debug = True
     app.run(host='0.0.0.0', port=9000)
